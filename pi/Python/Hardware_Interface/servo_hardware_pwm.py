@@ -54,7 +54,6 @@ class Servo:
             value: the number to be changed
 
         Returns: converted value
-
         """
         value = min(max(value, min_in), max_in)
         shifted_value = min_out + (value - min_in) / (max_in - min_in) * (max_out - min_out)
@@ -65,31 +64,37 @@ class Servo:
         write to the servo
         Args:
             inn: input number, (0 to 100 with standard settings)
-
-        Returns: None
-
         """
         value = inn + self._offset  # add offset calibration to get correct center
         duty_cycle = Servo.map(self._min_in, self._max_in, self._min_out, self._max_out, value)
+        print("duty_cycle: ", duty_cycle)
         self._pwm.change_duty_cycle(duty_cycle)
 
-    def write_smooth(self, inn, tolerance=0.02, delay=0.005):
+    def write_smooth(self, inn, step_length=0.02, delay=0.005):
+        """
+        Changes the value gradually instead of instant. Used to reduce motor start-current peak.
+        Will block the code until movement is finished.
+
+        Args:
+            inn: value to write
+            step_length: how much value will change each time step
+            delay: delay between steps
+        """
 
         value = inn + self._offset  # add offset calibration to get correct center
         duty_cycle = Servo.map(self._min_in, self._max_in, self._min_out, self._max_out, value)
 
         while True:
             error = duty_cycle - self._prev_duty_cycle
-            if error >= tolerance:
-                self._prev_duty_cycle += tolerance
-            elif error <= -tolerance:
-                self._prev_duty_cycle -= tolerance
+            if error >= step_length:
+                self._prev_duty_cycle += step_length
+            elif error <= -step_length:
+                self._prev_duty_cycle -= step_length
             else:
                 break
             self._pwm.change_duty_cycle(self._prev_duty_cycle)
             print(self._prev_duty_cycle)
             sleep(delay)
-
 
     def __del__(self):
         """
@@ -112,33 +117,10 @@ if __name__ == '__main__':
     camera._max_in = 90
     camera._min_out = 2.5
     camera._max_out = 11.7
-    camera.write(100)
-
-    #motor.write(50)
+    camera.write(0)
 
     while True:
         value = float(input("value:"))
-        duty_cycle = Servo.map(0, 100, 2.5, 11.7, value)
-        motor.write(value)
+        camera.write(value)
+        #motor.write_smooth(value)
         sleep(0.5)
-
-'''
-    motor.write(0)
-    light.write(100)
-
-    sleep(5)
-    try:
-        #while a<1:
-        for i in range(0, 100):
-            print(i)
-            motor.write(i)
-            print("onn")
-            sleep(0.5/100)
-        sleep(5)
-        motor.write(0)
-        print("off")
-        light.write(-100)
-        sleep(1)
-    except KeyboardInterrupt:
-        print("\nprogram stopped")
-    '''

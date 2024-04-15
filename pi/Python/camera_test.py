@@ -44,8 +44,6 @@ try:
             w = int(np.floor(box[0].xywh[0][2].item()))
             h = int(np.floor(box[0].xywh[0][3].item()))
 
-            #cv2.rectangle(cvframe, (x, y), (x + w, y + h), (0, 255, 0))
-            #cv2.rectangle(cvframe, (x-w/2, y-h/2), (x+w/2, y+h/2), (0, 255, 0))
             cv2.rectangle(cvframe, (x-w//2, y-h//2), (x + w // 2, y + h // 2), (0, 255, 0))
 
         # Fungerende gammel tcp kode

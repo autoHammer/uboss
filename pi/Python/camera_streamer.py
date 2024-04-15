@@ -79,18 +79,15 @@ class VideoProcessor:
         self.stream_pipeline.set_state(Gst.State.NULL)
 
 
-def main():
+def start_stream():
     processor = VideoProcessor()
     processor.start()
 
-    # Run the main loop
-    mainloop = GLib.MainLoop()
+    # Run the gstream loop
+    gstream = GLib.MainLoop()
     try:
-        mainloop.run()
+        gstream.run()
     except KeyboardInterrupt:
         processor.stop()
-        mainloop.quit()
+        gstream.quit()
 
-
-if __name__ == '__main__':
-    main()

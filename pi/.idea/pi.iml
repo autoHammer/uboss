@@ -5,4 +5,8 @@
     <orderEntry type="jdk" jdkName="Remote Python 3.11.2 (sftp://pi@10.25.47.193:22/home/pi/Desktop/venv/bin/python3.11)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="PyDocumentationSettings">
+    <option name="format" value="GOOGLE" />
+    <option name="myDocStringFormat" value="Google" />
+  </component>
 </module>

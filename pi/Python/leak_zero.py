@@ -34,5 +34,6 @@ print("Leak detection is enabled.")
 # keep program alive
 while True:
     time.sleep(1)
-    # TODO: heartbeat
+    master.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
+                              mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0)
 

@@ -13,7 +13,7 @@ master = mavutil.mavlink_connection('udpout:192.168.2.1:14550', source_system=1)
 
 # Send a message for QGC to read out loud
 #  Severity from https://mavlink.io/en/messages/common.html#MAV_SEVERITY
-master.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_NOTICE,
+master.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_EMERGENCY,
                            "Water detection enabled".encode())
 
 

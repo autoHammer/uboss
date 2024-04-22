@@ -3,6 +3,7 @@ import numpy as np
 from ultralytics import YOLO
 import cv2
 import time
+import datetime
 from Other.thread_safe_value import ThreadSafeValue
 
 # Recognition font settings
@@ -14,12 +15,23 @@ font_thickness = 1  # Thickness of the text
 
 
 class ObjectDetector:
-    def __init__(self, model):
+    def __init__(self, model, store_process_duration=False):
         print("Current dir: ", model)
         self._model = YOLO(model)
         self._results = ThreadSafeValue()
         self._current_frame = None
         self._detector_thread = None
+        self._last_processing_duration = None
+        self._STORE = store_process_duration
+        self._FILE = None
+        # Start writing to file if storing is desired
+
+        if self._STORE:
+            self._FILE = open(model + )
+
+    def __del__(self):
+        if self._STORE and not self._FILE.closed():
+
 
     def detect(self, frame):
         # Update frame
@@ -34,10 +46,11 @@ class ObjectDetector:
             self._detector_thread = threading.Thread(target=self.detector_thread, args=(self._current_frame,))
             self._detector_thread.start()
 
-
     def detector_thread(self, frame):
+        start_t = time.time()
         results = self._model.predict(frame)
         self._results.set(results)
+        self._last_processing_duration = time.time() - start_t
 
     def draw_boxes(self, frame):
         if (self._current_frame is None) or (self._results.take() is None):

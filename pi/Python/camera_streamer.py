@@ -14,19 +14,29 @@ Gst.init(None)
 # Parameters:
 IMAGE_RECOGNITION_DIR = os.getcwd() + "/../Image_Recognition"
 
-YOLOV8_PT_S = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/v8_small_first_best.pt"
+YOLOV8_FIRST_BEST_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/v8_small_first_best.pt"
+YOLOV8_TRAPS_ONLY_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/traps_only_small.pt"
+YOLOV8_CUSTOM_TRAPS_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_small.pt"
+YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_nano.pt"
 
 # Detector object
-object_detector = ObjectDetector(YOLOV8_PT_S)
+object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
 
 
 class VideoProcessor:
-    def __init__(self):
+    def __init__(self, capture_pipeline, video_file=""):
         # Capture pipeline
-        self.capture_pipeline = Gst.parse_launch(
-            "v4l2src ! videoconvert ! videoscale ! "
-            "video/x-raw,format=BGR,width=640,height=480 ! appsink name=mysink emit-signals=True"
-        )
+        if capture_pipeline == "camera_capture":
+            self.capture_pipeline = Gst.parse_launch(
+                "v4l2src ! videoconvert ! videoscale ! "
+                "video/x-raw,format=BGR,width=640,height=480 ! appsink name=mysink emit-signals=True"
+            )
+        elif capture_pipeline == "videofile_capture":
+            self.capture_pipeline = Gst.parse_launch(
+                "filesrc location={} ! decodebin ! videoconvert ! videoscale ! "
+                "video/x-raw,format=BGR,width=640,height=480 ! appsink name=mysink emit-signals=True".format(video_file)
+            )
+
         appsink = self.capture_pipeline.get_by_name('mysink')
         appsink.connect('new-sample', self.on_new_sample)
 
@@ -38,8 +48,6 @@ class VideoProcessor:
             "udpsink host=192.168.2.1 port=5601"
         )
         self.appsrc = self.stream_pipeline.get_by_name('mysrc')
-        self.counter = 0
-        self._RECOGNITION_INTERVAL = 30
         self.recognition_results = None
 
     def on_new_sample(self, appsink):
@@ -79,8 +87,12 @@ class VideoProcessor:
         self.stream_pipeline.set_state(Gst.State.NULL)
 
 
-def start_stream():
-    processor = VideoProcessor()
+#def start_stream():
+def main():
+    # Video dir:
+    VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
+    #processor = VideoProcessor("camera_capture")
+    processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
     processor.start()
 
     # Run the gstream loop
@@ -90,4 +102,8 @@ def start_stream():
     except KeyboardInterrupt:
         processor.stop()
         gstream.quit()
+
+
+if __name__ == "__main__":
+    main()
 

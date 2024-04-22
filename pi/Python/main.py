@@ -3,6 +3,7 @@ from pymavlink import mavutil
 import threading
 
 from Hardware_Interface.servo_hardware_pwm import Servo
+from Hardware_Interface.IMU import IMU_handler
 from Other.thread_safe_value import ThreadSafeValue
 
 
@@ -85,10 +86,9 @@ def GPIO_interface(stop_event, data):
 
 
 def main():
-    #leak_setup()
 
     stop_event = threading.Event()
-    data = ThreadSafeValue()
+    data = ThreadSafeValue()  # TODO: rename to a less generic name
 
     mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, data))
     mavlink_thread.start()
@@ -96,19 +96,27 @@ def main():
     GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, data))
     GPIO_thread.start()
 
-    leak_thread = threading.Thread(target=leak_setup)
+    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, data))
+    GPIO_thread.start()
+
+    IMU_data = ThreadSafeValue()
+    IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
+    IMU_thread.start()
 
     try:
         while True:
-            sleep(1)
+            if IMU_data.has_new_value():
+                data = IMU_data.take()
+                print("data:", data)
 
     except KeyboardInterrupt:
-        print("Exiting program")
+        print("\nStopping program. . .")
         stop_event.set()
         mavlink_thread.join()
         GPIO_thread.join()
+        IMU_thread.join()
+        print("Program closed successfully.")
 
 
 if __name__ == '__main__':
     main()
-

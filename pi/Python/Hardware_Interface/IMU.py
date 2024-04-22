@@ -1,82 +1,39 @@
 from pymavlink import mavutil
+from Other.thread_safe_value import ThreadSafeValue
+# for testing:
 import threading
 
 
-class IMU:
-    """
+def IMU_handler(stop_event, IMU_data):
+    link_in = mavutil.mavlink_connection('udp:0.0.0.0:14550')
+    link_in.wait_heartbeat()
 
-    """
-
-    def __init__(self, stop_event):
-        self.link_in = mavutil.mavlink_connection('udp:0.0.0.0:14550')
-        self.link_in.wait_heartbeat()
-        self.lock = threading.Lock()
-        self._x = 0
-        self._y = 0
-        self._z = 0
-        self.stop_event = stop_event
-        self.IMU_thread = threading.Thread(target=self.update_IMU_data, args=(self.stop_event,))
-        self.IMU_thread.start()
-        print("IMU connected")
-
-    @property
-    def x(self):
-        with self.lock:
-            new_x = self._x
-        return new_x
-
-    @property
-    def y(self):
-        with self.lock:
-            new_y = self._y
-        return new_y
-
-    @property
-    def z(self):
-        with self.lock:
-            new_z = self._z
-        return new_z
-
-    def update_IMU_data(self, stop_event):
-        """
-
-        Returns:
-
-        """
-        while not stop_event.is_set():
-            message = self.link_in.recv_match(type='RAW_IMU', blocking=True, timeout=2000)
-            if message:
-                with self.lock:
-                    self._x = message.xacc
-                    self._y = message.yacc
-                    self._z = message.zacc
-            else:
-                print("IMU timeout. Waiting for connection . . .")
-                self.link_in.wait_heartbeat()
-                print("IMU reconnected")
-
-    def __del__(self):
-        #self.stop_event.set()
-        #self.IMU_thread.join()
-        print("IMU offline")
-
+    while not stop_event.is_set():
+        message = link_in.recv_match(type='RAW_IMU', blocking=True, timeout=2)
+        if message:
+            IMU_data.set({"x": message.xacc,
+                          "y": message.yacc,
+                          "z": message.zacc})
+        else:
+            print("IMU timeout. Waiting for connection . . .")
+            link_in.wait_heartbeat()
+            print("IMU reconnected")
 
 
 if __name__ == '__main__':
+    IMU_data = ThreadSafeValue()
     stop_event = threading.Event()
-    data = IMU(stop_event)
+    IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
+    IMU_thread.start()
+
     try:
         while True:
-            print("xacc:", data.x)
-            print("yacc:", data.y)
-            print("yacc:", data.z)
-            print("")
-            from time import sleep
-            sleep(0.02)
+            if IMU_data.has_new_value():
+                data = IMU_data.take()
+                print("data:", data)
+
     except KeyboardInterrupt:
-        print("Caught KeyboardInterrupt, performing cleanup.")
+        print("\nStopping program. . .")
         stop_event.set()
-
-
-
-
+        IMU_thread.join()
+        print("Program closed successfully.")

@@ -49,14 +49,14 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, o
     H = np.matrix([[1.0, 0.0, 0.0],
                    [0.0, 0.0, 1.0]])
     R_x = np.matrix([[0.001, 0],
-                   [0, 0.0.3266]])
-    R_y = np.matrix([[0.01, 0],
+                   [0, 0.3266]])
+    R_y = np.matrix([[0.001, 0],
                      [0, 0.2999]])
     process_variance = 0.1
 
     # constants:
-    IMU = 1
-    DETECTION_ALGORITHM = 2
+    IMU = 2
+    DETECTION_ALGORITHM = 1
     RECTANGULAR_CRAB_TRAP = "rectangular fish trap"
 
     # PID parameters:
@@ -70,6 +70,7 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, o
 
     while not stop_event.is_set():
         kalman_filter_x.a_priori()
+        kalman_filter_y.a_priori()
         if IMU_data.has_new_value():
             current_imu_data = IMU_data.take()
             # Update x coordinates
@@ -77,7 +78,7 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, o
             kalman_filter_x.a_posteriori_asynchronous(measurement=[0, current_imu_data["x"]], sensor=IMU)
 
             # Update y coordinates
-            kalman_filter_y.a_priori()
+            #kalman_filter_y.a_priori()  # TODO: Maybe move this out of the if condition?
             kalman_filter_y.a_posteriori_asynchronous(measurement=[0, current_imu_data["y"]], sensor=IMU)
 
         if prediction_results.has_new_value():

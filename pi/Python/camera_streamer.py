@@ -6,6 +6,7 @@ from gi.repository import Gst, GLib
 import os
 from object_recognizer import ObjectDetector
 from Other.thread_safe_value import ThreadSafeValue
+import time
 
 gi.require_version('Gst', '1.0')
 
@@ -25,7 +26,8 @@ YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_tr
 
 
 class VideoStreamer:
-    def __init__(self, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
+    def __init__(self, stop_event, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
+        self.stop_event = stop_event
         # Capture pipeline
         if capture_pipeline == "camera_capture":
             self.capture_pipeline = Gst.parse_launch(
@@ -50,7 +52,7 @@ class VideoStreamer:
         )
         self.appsrc = self.stream_pipeline.get_by_name('mysrc')
         self.recognition_results = predictions
-        self.object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
+        self.object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT, thread_safe_results=predictions)
 
     def on_new_sample(self, appsink):
         sample = appsink.emit('pull-sample')
@@ -68,6 +70,10 @@ class VideoStreamer:
             # Image processing:
             self.object_detector.detect(frame)
             frame = self.object_detector.draw_boxes(frame)
+
+            """if self.recognition_results.has_new_value():
+                print("LOLOLOL")
+                self.recognition_results.take()"""
 
             self.push_frame_to_appsrc(frame)
 
@@ -88,25 +94,53 @@ class VideoStreamer:
         self.capture_pipeline.set_state(Gst.State.NULL)
         self.stream_pipeline.set_state(Gst.State.NULL)
 
+    def video_streaming_thread(self):
+        self.start()  # Start the GStreamer pipelines
+
+        bus = self.capture_pipeline.get_bus()
+        timeout = 100  # Milliseconds
+
+        while not self.stop_event.is_set():
+            message = bus.timed_pop_filtered(timeout * Gst.MSECOND,
+                                             Gst.MessageType.ERROR | Gst.MessageType.EOS)
+
+            # Check for GStreamer specific messages
+            if message:
+                if message.type == Gst.MessageType.ERROR:
+                    err, debug = message.parse_error()
+                    print("Error:", err, debug)
+                    self.stop_event.set()
+                    break
+                elif message.type == Gst.MessageType.EOS:
+                    print("End of Stream")
+                    self.stop_event.set()
+                    break
+            time.sleep(0.01)  # Sleep to reduce CPU usage
+
+        self.stop()  # Stop the GStreamer pipelines
+
+
+
 
 #def start_stream():
-def start_stream(predictions):
-    # Video dir:
-    #VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
-    processor = VideoStreamer("camera_capture", predictions)
-    #processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
-    processor.start()
+    #def start_stream(stop_event, predictions):
+"""    def start_stream(self):
+        # Video dir:
+        #VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
+        #processor = VideoStreamer("camera_capture", predictions)
+        #processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
+        #processor.start()
+    
+        # Run the gstream loop
+        gstream = GLib.MainLoop()
+        try:
+            gstream.run()
+        except KeyboardInterrupt:
+            processor.stop()
+            gstream.quit()"""
 
-    # Run the gstream loop
-    gstream = GLib.MainLoop()
-    try:
-        gstream.run()
-    except KeyboardInterrupt:
-        processor.stop()
-        gstream.quit()
 
-
-start_stream()
+#start_stream()
 """
 if __name__ == "__main__":
     main()

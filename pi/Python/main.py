@@ -7,6 +7,7 @@ from Hardware_Interface.IMU import IMU_handler
 from Other.thread_safe_value import ThreadSafeValue
 from camera_streamer import *
 from Other.kalman import *
+gi.require_version('Gst', '1.0')
 
 
 def mavlink_thruster_control(stop_event, thruster_data):
@@ -112,8 +113,8 @@ def main():
     stop_event = threading.Event()
     servo_data = ThreadSafeValue()
 
-    mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, servo_data))
-    mavlink_thread.start()
+    """mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, servo_data))
+    mavlink_thread.start()"""
 
     GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
     GPIO_thread.start()
@@ -130,21 +131,28 @@ def main():
     thruster_thread.start()
 
     prediction_data = ThreadSafeValue()
-    camera_streamer_thread = threading.Thread(target=start_stream, args=(stop_event, prediction_data,))
+    video_streamer = VideoStreamer(stop_event, "camera_capture", predictions=prediction_data)
+    camera_streamer_thread = threading.Thread(target=video_streamer.video_streaming_thread, args=())
     camera_streamer_thread.start()
 
+    # Distance measurement should be inserted with desired units here (same units as IMU_data)
+    distance_data = 102  # 102cm distance sensor measurement
     controller_output = ThreadSafeValue()
     controller = threading.Thread(target=controller_thread, args=(stop_event, IMU_data,
-                                                                  prediction_data, data, controller_output,))
+                                                                  prediction_data, distance_data, controller_output,))
     controller.start()
 
     try:
         while True:
             if IMU_data.has_new_value():
                 print("data:", IMU_data.take())
+            #if prediction_data.has_new_value():
+            #    print("New value from thread (Main) \n")
+            #    prediction_data.take()
 
     except KeyboardInterrupt:
         print("\nStopping program. . .")
+        video_streamer.stop()
         stop_event.set()
         mavlink_thread.join()
         GPIO_thread.join()

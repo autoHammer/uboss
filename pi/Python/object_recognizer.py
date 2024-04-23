@@ -18,6 +18,7 @@ class ObjectDetector:
     def __init__(self, model, store_process_duration=False, thread_safe_results=None):
         print("Current dir: ", model)
         self._model = YOLO(model)
+        print("Model classes: \n", self._model.names)
         self._results = ThreadSafeValue()
         self._thread_safe_results = thread_safe_results
         self._current_frame = None

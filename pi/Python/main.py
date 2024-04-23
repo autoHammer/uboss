@@ -9,7 +9,27 @@ from camera_streamer import *
 from Other.kalman import *
 
 
-def mavlink_to_hardware_output(stop_event, data):
+def mavlink_thruster_control(stop_event, thruster_data):
+    link_out = mavutil.mavlink_connection('udpin:192.168.2.3:14550')
+    link_out.wait_heartbeat()
+
+    while not stop_event.is_set():
+        if thruster_data.has_new_value():
+            forward = thruster_data.take()["forward"]
+            lateral = thruster_data.take()["lateral"]
+            print("Sending RC override")
+            link_out.mav.rc_channels_override_send(
+                link_out.target_system,
+                link_out.target_component,
+                65535, 65535, 65535, 65535,
+                forward,
+                lateral,
+                65535, 65535
+            )
+        sleep(0.05)  # 20hz
+
+
+def mavlink_to_hardware_output(stop_event, servo_data):
     """
     Thread for fetching mavlink commands to control motor, servo and LED
     """
@@ -44,7 +64,7 @@ def mavlink_to_hardware_output(stop_event, data):
     while not stop_event.is_set():
         message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True)
         if message:
-            data.set({"camera_tilt": message.servo9_raw,
+            servo_data.set({"camera_tilt": message.servo9_raw,
                       "motor": message.servo10_raw})
 
 
@@ -90,20 +110,24 @@ def GPIO_interface(stop_event, data):
 def main():
 
     stop_event = threading.Event()
-    data = ThreadSafeValue()  # TODO: rename to a less generic name
+    servo_data = ThreadSafeValue()
 
-    mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, data))
+    mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, servo_data))
     mavlink_thread.start()
 
-    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, data))
+    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
     GPIO_thread.start()
 
-    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, data))
+    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
     GPIO_thread.start()
 
     IMU_data = ThreadSafeValue()
     IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
     IMU_thread.start()
+
+    thruster_data = ThreadSafeValue()
+    thruster_thread = threading.Thread(target=mavlink_thruster_control, args=(stop_event, thruster_data,))
+    thruster_thread.start()
 
     prediction_data = ThreadSafeValue()
     camera_streamer_thread = threading.Thread(target=start_stream, args=(stop_event, prediction_data,))
@@ -117,8 +141,7 @@ def main():
     try:
         while True:
             if IMU_data.has_new_value():
-                data = IMU_data.take()
-                print("data:", data)
+                print("data:", IMU_data.take())
 
     except KeyboardInterrupt:
         print("\nStopping program. . .")

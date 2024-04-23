@@ -5,6 +5,8 @@ import threading
 from Hardware_Interface.servo_hardware_pwm import Servo
 from Hardware_Interface.IMU import IMU_handler
 from Other.thread_safe_value import ThreadSafeValue
+from camera_streamer import *
+from Other.kalman import *
 
 
 def mavlink_to_hardware_output(stop_event, data):
@@ -103,6 +105,15 @@ def main():
     IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
     IMU_thread.start()
 
+    prediction_data = ThreadSafeValue()
+    camera_streamer_thread = threading.Thread(target=start_stream, args=(stop_event, prediction_data,))
+    camera_streamer_thread.start()
+
+    controller_output = ThreadSafeValue()
+    controller = threading.Thread(target=controller_thread, args=(stop_event, IMU_data,
+                                                                  prediction_data, data, controller_output,))
+    controller.start()
+
     try:
         while True:
             if IMU_data.has_new_value():
@@ -115,6 +126,8 @@ def main():
         mavlink_thread.join()
         GPIO_thread.join()
         IMU_thread.join()
+        camera_streamer_thread.join()
+        controller.join()
         print("Program closed successfully.")
 
 

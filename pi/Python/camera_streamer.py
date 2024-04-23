@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from gi.repository import Gst, GLib
 import os
 from object_recognizer import ObjectDetector
+from Other.thread_safe_value import ThreadSafeValue
 
 gi.require_version('Gst', '1.0')
 
@@ -20,11 +21,11 @@ YOLOV8_CUSTOM_TRAPS_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_t
 YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_nano.pt"
 
 # Detector object
-object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
+#object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
 
 
-class VideoProcessor:
-    def __init__(self, capture_pipeline, video_file=""):
+class VideoStreamer:
+    def __init__(self, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
         # Capture pipeline
         if capture_pipeline == "camera_capture":
             self.capture_pipeline = Gst.parse_launch(
@@ -48,7 +49,8 @@ class VideoProcessor:
             "udpsink host=192.168.2.1 port=5601"
         )
         self.appsrc = self.stream_pipeline.get_by_name('mysrc')
-        self.recognition_results = None
+        self.recognition_results = predictions
+        self.object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
 
     def on_new_sample(self, appsink):
         sample = appsink.emit('pull-sample')
@@ -64,8 +66,8 @@ class VideoProcessor:
                 dtype=np.uint8)
 
             # Image processing:
-            object_detector.detect(frame)
-            frame = object_detector.draw_boxes(frame)
+            self.object_detector.detect(frame)
+            frame = self.object_detector.draw_boxes(frame)
 
             self.push_frame_to_appsrc(frame)
 
@@ -88,11 +90,11 @@ class VideoProcessor:
 
 
 #def start_stream():
-def main():
+def start_stream(predictions):
     # Video dir:
-    VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
-    #processor = VideoProcessor("camera_capture")
-    processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
+    #VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
+    processor = VideoStreamer("camera_capture", predictions)
+    #processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
     processor.start()
 
     # Run the gstream loop
@@ -104,6 +106,8 @@ def main():
         gstream.quit()
 
 
+start_stream()
+"""
 if __name__ == "__main__":
     main()
-
+"""

@@ -15,10 +15,11 @@ font_thickness = 1  # Thickness of the text
 
 
 class ObjectDetector:
-    def __init__(self, model, store_process_duration=False):
+    def __init__(self, model, store_process_duration=False, thread_safe_results=None):
         print("Current dir: ", model)
         self._model = YOLO(model)
         self._results = ThreadSafeValue()
+        self._thread_safe_results = thread_safe_results
         self._current_frame = None
         self._detector_thread = None
         self._last_processing_duration = None
@@ -27,10 +28,11 @@ class ObjectDetector:
         # Start writing to file if storing is desired
 
         if self._STORE:
-            self._FILE = open(model + )
+            self._FILE = open(model)
 
     def __del__(self):
-        if self._STORE and not self._FILE.closed():
+        print("Destroyed")
+        #if self._STORE and not self._FILE.closed():
 
 
     def detect(self, frame):
@@ -49,8 +51,11 @@ class ObjectDetector:
     def detector_thread(self, frame):
         start_t = time.time()
         results = self._model.predict(frame)
-        self._results.set(results)
         self._last_processing_duration = time.time() - start_t
+        self._results.set(results)
+        # If results are desired, update thread safe results
+        if self._thread_safe_results is not None:
+            self._thread_safe_results.set(results)
 
     def draw_boxes(self, frame):
         if (self._current_frame is None) or (self._results.take() is None):

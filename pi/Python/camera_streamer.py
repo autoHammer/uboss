@@ -14,12 +14,15 @@ gi.require_version('Gst', '1.0')
 Gst.init(None)
 
 # Parameters:
-IMAGE_RECOGNITION_DIR = os.getcwd() + "/../Image_Recognition"
+SCRIPT_PATH = os.path.abspath(__file__)
+SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
+IMAGE_RECOGNITION_DIR = SCRIPT_DIR + "/../Image_Recognition"
 
 YOLOV8_FIRST_BEST_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/v8_small_first_best.pt"
 YOLOV8_TRAPS_ONLY_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/traps_only_small.pt"
 YOLOV8_CUSTOM_TRAPS_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_small.pt"
 YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_nano.pt"
+#YOLOV8_CUSTOM_TRAPS_NANO_PT = "../Image_Recognition/yolov8/Weights/custom_traps_nano.pt"
 
 # Detector object
 #object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)

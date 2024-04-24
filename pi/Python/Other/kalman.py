@@ -2,10 +2,6 @@ import numpy as np
 import time
 from Other.pid import PID
 
-
-def update_pid()
-
-
 def pixel_to_distance_calc(distance, coordinates):
     # Camera parameters:
     tetha = 36  # width angle
@@ -29,17 +25,22 @@ def get_prediction_coordinates(detection_results, desired_object):
     camera_width = 640
     camera_height = 480
     coordinates = {"x": None, "y": None}
-    for detected_object in detection_results:
-        cls = int(detected_object.boxes.cls.item())
-        name = detected_object.names[cls]
-        print("Detected object: ", name)
-        if detected_object.names[cls] == desired_object:
-            x = int(np.floor(detected_object.boxes.xywh[0][0].item()))
-            y = int(np.floor(detected_object.boxes.xywh[0][1].item()))
+    try:
+        for detected_object in detection_results:
+            if detected_object.boxes.cls.numel() > 0:
+                cls = int(detected_object.boxes.cls.item())
+                name = detected_object.names[cls]
+                #print("Detected object: ", name)
+                if detected_object.names[cls] == desired_object:
+                    x = int(np.floor(detected_object.boxes.xywh[0][0].item()))
+                    y = int(np.floor(detected_object.boxes.xywh[0][1].item()))
 
-            coordinates["x"] = x - camera_width//2
-            coordinates["y"] = y - camera_height//2
-            break
+                    coordinates["x"] = x - camera_width//2
+                    coordinates["y"] = y - camera_height//2
+                    break
+    except RuntimeError:
+        print("Prediction error")
+
     return coordinates
 
 
@@ -94,6 +95,9 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
                                                             ACCEPTABLE_Z_ERROR=ACCEPTABLE_ERROR_Z,
                                                             actuator_extension_duration=EXTENTION_TIME)
 
+    # access parameters:
+    distance_measured = 100
+
     while not stop_event.is_set():
         # Check for new pid parameters:
         if pid_parameters.has_new_value():
@@ -101,6 +105,7 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             controller_x.update_all_params(kp=params["x_kp"], ki=params["x_ki"], kd=params["x_kd"])
             controller_y.update_all_params(kp=params["y_kp"], ki=params["y_ki"], kd=params["y_kd"])
             controller_z.update_all_params(kp=params["z_kp"], ki=params["z_ki"], kd=params["z_kd"])
+            print("New parameters gotten: x_kp: ", controller_x.kp_, " x_ki: ", controller_x.ki_,  " x_kd: ", controller_x.kd_)
 
         # Update kalman
         kalman_filter_x.a_priori()
@@ -113,12 +118,17 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             # Update y coordinates
             kalman_filter_y.a_posteriori_asynchronous(measurement=[0, current_imu_data["y"]], sensor=IMU)
 
+        if distance_data.has_new_value():
+            distance_dict = distance_data.take()
+            if "distance" in distance_dict:
+                distance_measured = distance_dict["distance"]
+
         if prediction_results.has_new_value():
             recognition_results = prediction_results.take()
             coordinates = get_prediction_coordinates(recognition_results, desired_object=RECTANGULAR_CRAB_TRAP)
             # Check for valid coordinates
             if coordinates["x"] is not None:
-                x_pos, y_pos = pixel_to_distance_calc(distance_data, coordinates)
+                x_pos, y_pos = pixel_to_distance_calc(distance_measured, coordinates)
                 kalman_filter_x.a_posteriori_asynchronous(measurement=[x_pos, 0], sensor=DETECTION_ALGORITHM)
                 kalman_filter_y.a_posteriori_asynchronous(measurement=[y_pos, 0], sensor=DETECTION_ALGORITHM)
 
@@ -136,7 +146,7 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             acceptable_xy_error = False
 
         # Get z output based on measured distance and xy_error:
-        z_output, actuator_mode = z_and_actuator_controller.output(distance_data, acceptable_xy_error)
+        z_output, actuator_mode = z_and_actuator_controller.output(distance_measured, acceptable_xy_error)
 
         output_dict = {"x": x_output, "y": y_output, "z": z_output, "actuator": actuator_mode}
 
@@ -196,7 +206,6 @@ class Kalman:
         for measurement in measurements:
             self.z[row] = measurement
             row += 1
-        print("z matrix: ", self.z)
 
 
 class HeightAndActuatorController:

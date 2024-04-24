@@ -61,7 +61,7 @@
       <paths name="pi@192.168.2.3:22 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/pycharm_project_272" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/pi/Desktop/pycharm_temp/sig" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

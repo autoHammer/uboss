@@ -64,7 +64,7 @@ def mavlink_servo_input(stop_event, servo_data):
     )
 
     while not stop_event.is_set():
-        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True)
+        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True)  # TODO: add timeout
         if message:
             servo_data.set({"camera_tilt": message.servo9_raw,
                       "motor": message.servo10_raw})
@@ -202,13 +202,34 @@ def user_input(stop_event, PID_data, distance_data):
             print("invalid input")
 
 
+def autopilot_handler(stop_event):
+    link_in = mavutil.mavlink_connection("udp:0.0.0.0:14554")
+    link_in.wait_heartbeat()
+
+    while not stop_event.is_set():
+        message = link_in.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)
+        if message:
+            auto_btn = message.servo11_raw
+            print("message: ", auto_btn)
+
+            if auto_btn > 1500:
+                autopilot = True
+            else:
+                autopilot = False
+        else:
+            print("mavlink autopilot timeout")
+
+        sleep(0.1)
+    return 0
+
+
 def main():
 
     stop_event = threading.Event()
     servo_data = ThreadSafeValue()
 
     mavlink_thread = threading.Thread(target=mavlink_servo_input, args=(stop_event, servo_data))
-    mavlink_thread.start()
+    #mavlink_thread.start()
 
     GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
     #GPIO_thread.start()
@@ -228,23 +249,29 @@ def main():
     depth_thread = threading.Thread(target=mavlink_depth, args=(stop_event,distance_data,))
     depth_thread.start()
 
-    user_data = ThreadSafeValue()
-    user_thread = threading.Thread(target=user_input, args=(stop_event, user_data, distance_data,))
+    pid_parameters = ThreadSafeValue()
+    user_thread = threading.Thread(target=user_input, args=(stop_event, pid_parameters, distance_data,))
     user_thread.start()
 
     prediction_data = ThreadSafeValue()
     video_streamer = VideoStreamer(stop_event, "camera_capture", predictions=prediction_data)
     camera_streamer_thread = threading.Thread(target=video_streamer.video_streaming_thread, args=())
-    camera_streamer_thread.start()
+    #camera_streamer_thread.start()  # TODO: add
 
     # Distance measurement should be inserted with desired units here (same units as IMU_data)
-    distance_data = 102  # 102cm distance sensor measurement
+    #distance_data = 102  # 102cm distance sensor measurement
     controller_output = ThreadSafeValue()
     controller = threading.Thread(target=controller_thread, args=(stop_event, IMU_data,
                                                                   prediction_data, distance_data,
                                                                   pid_parameters, controller_output,))
     controller.start()
 
+    auto_thread = threading.Thread(target=autopilot_handler, args=(stop_event,))
+    auto_thread.start()
+
+    sleep(10)  #TODO: remove
+    #print("after 10s", flush=True)
+    camera_streamer_thread.start()  # TODO: remove
     try:
         while True:
             if IMU_data.has_new_value():
@@ -266,6 +293,7 @@ def main():
         user_thread.join()
         camera_streamer_thread.join()
         controller.join()
+        auto_thread.join()
         print("Program closed successfully.")
 
 

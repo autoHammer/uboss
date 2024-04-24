@@ -139,7 +139,8 @@ def main():
     distance_data = 102  # 102cm distance sensor measurement
     controller_output = ThreadSafeValue()
     controller = threading.Thread(target=controller_thread, args=(stop_event, IMU_data,
-                                                                  prediction_data, distance_data, controller_output,))
+                                                                  prediction_data, distance_data,
+                                                                  pid_parameters, controller_output,))
     controller.start()
 
     try:

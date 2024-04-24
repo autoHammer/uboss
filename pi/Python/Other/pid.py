@@ -1,7 +1,7 @@
 import time
 
 class PID:
-    def __init__(self, kp, ki, kd, output_min=None, output_max=None):
+    def __init__(self, kp, ki, kd, output_min=None, output_max=None, zero_offset=0):
         self.kp_ = kp
         self.ki_ = ki
         self.kd_ = kd
@@ -11,7 +11,13 @@ class PID:
         self.t_old = time.time()
         self.min_output_ = output_min
         self.max_output_ = output_max
+        self.zero_offset_ = zero_offset
         self.error_ = self.dt = self.sv_ = self.p_ = self.d_ = None
+
+    def update_all_params(self, kp, ki, kd):
+        self.kp_ = kp
+        self.ki_ = ki
+        self.kd_ = kd
 
     def new_sv(self, sv):
         self.sv_ = sv
@@ -32,7 +38,7 @@ class PID:
         self.p_calc()
         self.i_calc()
         self.d_calc()
-        output = self.p_ + self.i_ + self.d_
+        output = self.p_ + self.i_ + self.d_ + self.zero_offset_
 
         # Constrain if desired
         if self.min_output_ is not None:

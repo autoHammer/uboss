@@ -4,10 +4,10 @@ from Other.thread_safe_value import ThreadSafeValue
 import threading
 
 
-def IMU_handler(stop_event, IMU_data):
-    link_in = mavutil.mavlink_connection('udp:0.0.0.0:14550')
+def mavlink_IMU_input(stop_event, IMU_data):
+    link_in = mavutil.mavlink_connection('udp:192.168.2.3:14551')
     link_in.wait_heartbeat()
-
+    print("IMU online")
     while not stop_event.is_set():
         message = link_in.recv_match(type='RAW_IMU', blocking=True, timeout=2)
         if message:
@@ -15,15 +15,15 @@ def IMU_handler(stop_event, IMU_data):
                           "y": message.yacc,
                           "z": message.zacc})
         else:
-            print("IMU timeout. Waiting for connection . . .")
+            print("mavlink IMU timeout. Waiting for connection . . .")
             link_in.wait_heartbeat()
-            print("IMU reconnected")
+            print("mavlink IMU reconnected")
 
 
 if __name__ == '__main__':
     IMU_data = ThreadSafeValue()
     stop_event = threading.Event()
-    IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
+    IMU_thread = threading.Thread(target=mavlink_IMU_input, args=(stop_event, IMU_data,))
     IMU_thread.start()
 
     try:

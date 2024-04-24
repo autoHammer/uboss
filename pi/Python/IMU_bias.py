@@ -2,7 +2,7 @@ from numpy import sqrt
 import threading
 from time import sleep
 
-from Hardware_Interface.IMU import IMU_handler
+from Hardware_Interface.IMU import mavlink_IMU_input
 from Other.thread_safe_value import ThreadSafeValue
 
 
@@ -32,7 +32,7 @@ def get_variance(data, avg):
 if __name__ == '__main__':
     stop_event = threading.Event()
     new_IMU_data = ThreadSafeValue()
-    IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, new_IMU_data,))
+    IMU_thread = threading.Thread(target=mavlink_IMU_input, args=(stop_event, new_IMU_data,))
     IMU_thread.start()
 
     data_x = []

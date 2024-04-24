@@ -3,7 +3,8 @@ from pymavlink import mavutil
 import threading
 
 from Hardware_Interface.servo_hardware_pwm import Servo
-from Hardware_Interface.IMU import IMU_handler
+from Hardware_Interface.IMU import mavlink_IMU_input
+from Hardware_Interface.ping_logger import ping_distance
 from Other.thread_safe_value import ThreadSafeValue
 from camera_streamer import *
 from Other.kalman import *
@@ -16,8 +17,8 @@ def mavlink_thruster_control(stop_event, thruster_data):
 
     while not stop_event.is_set():
         if thruster_data.has_new_value():
-            forward = thruster_data.take()["forward"]
-            lateral = thruster_data.take()["lateral"]
+            forward = thruster_data.take()["y"]
+            lateral = thruster_data.take()["x"]
             print("Sending RC override")
             link_out.mav.rc_channels_override_send(
                 link_out.target_system,
@@ -30,13 +31,13 @@ def mavlink_thruster_control(stop_event, thruster_data):
         sleep(0.05)  # 20hz
 
 
-def mavlink_to_hardware_output(stop_event, servo_data):
+def mavlink_servo_input(stop_event, servo_data):
     """
     Thread for fetching mavlink commands to control motor, servo and LED
     """
 
     ''' mavlink setup'''
-    link = mavutil.mavlink_connection("udp:0.0.0.0:14550") # TODO: updin - test
+    link = mavutil.mavlink_connection("udp:0.0.0.0:14550")
 
     link.wait_heartbeat()
 
@@ -69,12 +70,12 @@ def mavlink_to_hardware_output(stop_event, servo_data):
                       "motor": message.servo10_raw})
 
 
-def GPIO_interface(stop_event, data):
+def GPIO_interface(stop_event, servo_data):
     """
     Code for interfacing hardware connected to GPIO
     Args:
         stop_event:
-        data: Dictionary with keys:
+        servo_data: Dictionary with keys:
             - "motor":value
             - "camera_tilt":value
     """
@@ -94,9 +95,9 @@ def GPIO_interface(stop_event, data):
     camera.write(2500)
 
     while not stop_event.is_set():
-        if data.has_new_value():
+        if servo_data.has_new_value():
 
-            new_data = data.take()
+            new_data = servo_data.take()
             if 'motor' in new_data:
                 #motor.write(data["motor"].servo10_raw)
                 print("motor:", new_data["motor"])
@@ -108,27 +109,128 @@ def GPIO_interface(stop_event, data):
         sleep(0.1)
 
 
+def calculate_depth(pressure_abs):
+    """
+    Calculate depth based on absoulute pressure
+    Args:
+        pressure_abs: pressure in hPa (hecto Pascal)
+
+    Returns: depth in meter
+    """
+    SALTWATER_DENSITY = 1025  # kg/m^3
+    GRAVITY = 9.81  # m/s^2
+    ATMOSPHERE_PRESSURE = 1013  # hPa
+
+    pressure = pressure_abs - ATMOSPHERE_PRESSURE
+
+    depth = (pressure * 100) / (SALTWATER_DENSITY * GRAVITY)  # m
+
+    return depth
+
+
+def mavlink_depth(stop_event, distance_data):
+    link_in = mavutil.mavlink_connection('udp:192.168.2.3:14553')
+    link_in.wait_heartbeat()
+    print("Depth online")
+
+    # initial data
+    distance_data.set({"max_depth": 0})
+
+    while not stop_event.is_set():
+        message = link_in.recv_match(type='SCALED_PRESSURE2', blocking=True, timeout=2)
+        if message:
+            prev_data = distance_data.take()
+
+            pressure = message.press_abs
+
+            depth = calculate_depth(pressure)
+
+            if depth > prev_data["max_depth"]:
+                max_depth = depth
+            else:
+                max_depth = prev_data["max_depth"]
+
+            distance = max_depth - depth
+
+            distance_data.set({"pressure": pressure,
+                               "depth": depth,
+                               "max_depth": max_depth,
+                               "distance": distance})
+
+        else:
+            print("mavlink depth timeout. Waiting for connection . . .")
+            link_in.wait_heartbeat()
+            print("mavlink depth reconnected")
+
+
+def user_input(stop_event, PID_data, distance_data):
+    while not stop_event.is_set():
+        print("1. Restart max_depth\n"
+              "2. Change PID parameters")
+        command = input()
+
+        if command == "1":
+            distance_data.set({"max_depth": 0})
+            print("max_depth set to 0")
+
+        elif command == "2":
+            alternatives = ["x_kp", "x_ki", "x_kd", "y_kp", "y_ki", "y_kd", "z_kp", "z_ki", "z_kd"]
+
+            PID = PID_data.take()
+
+            try:
+                line = "\nChoose which parameter to change\n"
+                for i in range(len(alternatives)):
+                    line = line + f"{i}. {alternatives[i]}={PID[alternatives[i]]}\n"
+            except TypeError:
+                line = "\nChoose which parameter to change\n"
+                for i in range(len(alternatives)):
+                    line = line + f"{i}. {alternatives[i]}\n"
+            try:
+                chosen_parameter = alternatives[int(input(line))]
+                chosen_value = input("value: ")
+                PID[chosen_parameter] = chosen_value
+                PID_data.set(PID)
+
+            except (ValueError, IndexError):
+                print(f"Only give number input (INT) in the range 0 to {len(alternatives)}")
+            except TypeError:
+                print("PID not initialized yet!")
+            print("data: ", PID_data.take())
+
+        else:
+            print("invalid input")
+
+
 def main():
 
     stop_event = threading.Event()
     servo_data = ThreadSafeValue()
 
-    """mavlink_thread = threading.Thread(target=mavlink_to_hardware_output, args=(stop_event, servo_data))
-    mavlink_thread.start()"""
+    mavlink_thread = threading.Thread(target=mavlink_servo_input, args=(stop_event, servo_data))
+    mavlink_thread.start()
 
     GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
-    GPIO_thread.start()
-
-    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
-    GPIO_thread.start()
+    #GPIO_thread.start()
 
     IMU_data = ThreadSafeValue()
-    IMU_thread = threading.Thread(target=IMU_handler, args=(stop_event, IMU_data,))
+    IMU_thread = threading.Thread(target=mavlink_IMU_input, args=(stop_event, IMU_data,))
     IMU_thread.start()
 
     thruster_data = ThreadSafeValue()
     thruster_thread = threading.Thread(target=mavlink_thruster_control, args=(stop_event, thruster_data,))
-    thruster_thread.start()
+    #thruster_thread.start()
+
+    ping_thread = threading.Thread(target=ping_distance, args=(stop_event,))
+    #ping_thread.start()
+
+    distance_data = ThreadSafeValue()
+    depth_thread = threading.Thread(target=mavlink_depth, args=(stop_event,distance_data,))
+    depth_thread.start()
+
+    user_data = ThreadSafeValue()
+    user_thread = threading.Thread(target=user_input, args=(stop_event, user_data, distance_data,))
+    user_thread.start()
 
     prediction_data = ThreadSafeValue()
     video_streamer = VideoStreamer(stop_event, "camera_capture", predictions=prediction_data)
@@ -146,10 +248,11 @@ def main():
     try:
         while True:
             if IMU_data.has_new_value():
-                print("data:", IMU_data.take())
-            #if prediction_data.has_new_value():
-            #    print("New value from thread (Main) \n")
-            #    prediction_data.take()
+                pass#print("IMU_data:", IMU_data.take())
+            if distance_data.has_new_value():
+                pass#print("distance_data:", distance_data.take())
+
+            sleep(0.01)
 
     except KeyboardInterrupt:
         print("\nStopping program. . .")
@@ -158,6 +261,9 @@ def main():
         mavlink_thread.join()
         GPIO_thread.join()
         IMU_thread.join()
+        ping_thread.join()
+        depth_thread.join()
+        user_thread.join()
         camera_streamer_thread.join()
         controller.join()
         print("Program closed successfully.")

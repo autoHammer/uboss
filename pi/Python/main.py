@@ -11,19 +11,24 @@ from Other.kalman import *
 gi.require_version('Gst', '1.0')
 
 
-def mavlink_thruster_control(stop_event, thruster_data):
+def mavlink_thruster_control(stop_event, thruster_data, autopilot_enable_event):
     link_out = mavutil.mavlink_connection('udpin:192.168.2.3:14550')
     link_out.wait_heartbeat()
 
     while not stop_event.is_set():
-        if thruster_data.has_new_value():
-            forward = thruster_data.take()["y"]
-            lateral = thruster_data.take()["x"]
-            print("Sending RC override")
+        if thruster_data.has_new_value() and autopilot_enable_event.is_set():
+            forward = int(thruster_data.take()["y"])
+            lateral = int(thruster_data.take()["x"])
+            vertical = int(thruster_data.take()["z"])
+            print(f"{threading.current_thread().name}: Sending RC override: \n"
+                  f"Forward: {forward}\n"
+                  f"Lateral: {lateral}")
             link_out.mav.rc_channels_override_send(
                 link_out.target_system,
                 link_out.target_component,
-                65535, 65535, 65535, 65535,
+                65535, 65535,
+                vertical,
+                65535,
                 forward,
                 lateral,
                 65535, 65535
@@ -37,7 +42,7 @@ def mavlink_servo_input(stop_event, servo_data):
     """
 
     ''' mavlink setup'''
-    link = mavutil.mavlink_connection("udp:0.0.0.0:14550")
+    link = mavutil.mavlink_connection("udp:0.0.0.0:14552")
 
     link.wait_heartbeat()
 
@@ -64,13 +69,15 @@ def mavlink_servo_input(stop_event, servo_data):
     )
 
     while not stop_event.is_set():
-        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True)  # TODO: add timeout
+        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)  # TODO: add timeout
         if message:
             servo_data.set({"camera_tilt": message.servo9_raw,
-                      "motor": message.servo10_raw})
+                            "motor": message.servo10_raw})
+        else:
+            print("Mavlink servo timout")
 
 
-def GPIO_interface(stop_event, servo_data):
+def GPIO_interface(stop_event, servo_data, x):
     """
     Code for interfacing hardware connected to GPIO
     Args:
@@ -81,7 +88,8 @@ def GPIO_interface(stop_event, servo_data):
     """
     ''' Motor setup '''
     motor = Servo(18)
-    motor._min_in = -100  # control motor with -100 to 100 (percentage thrust)
+    motor._min_in = 1100  # control motor with -100 to 100 (percentage thrust)
+    motor._max_in = 1900
     motor._offset = 1
     motor.write(0)
 
@@ -97,13 +105,12 @@ def GPIO_interface(stop_event, servo_data):
     while not stop_event.is_set():
         if servo_data.has_new_value():
             new_data = servo_data.take()
+            #print("new_data: ", new_data)
             if 'motor' in new_data:
-                #motor.write(data["motor"].servo10_raw)
-                print("motor:", new_data["motor"])
+                motor.write_smooth(new_data["motor"])
 
             if "camera_tilt" in new_data:
-                #camera.write(data["camera_tilt"].servo9_raw)
-                print("camera:", new_data["camera_tilt"])
+                camera.write(new_data["camera_tilt"])
 
         sleep(0.1)
 
@@ -210,19 +217,30 @@ def user_input(stop_event, PID_data, distance_data, enable_object_detection_even
             print("invalid input")
 
 
-def autopilot_handler(stop_event):
+def autopilot_handler(stop_event, autopilot_enable_event):
     link_in = mavutil.mavlink_connection("udp:0.0.0.0:14554")
     link_in.wait_heartbeat()
+
+    link_out = mavutil.mavlink_connection('udpout:192.168.2.1:14550', source_system=1)
+    # TODO: add send heartbeat? to not get the heartbeat lost stuff
+
+    autopilot = False
 
     while not stop_event.is_set():
         message = link_in.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)
         if message:
             auto_btn = message.servo11_raw
 
-            if auto_btn > 1500:
+            if auto_btn > 1500 and autopilot is False:
                 autopilot = True
-            else:
+                autopilot_enable_event.set()
+                link_out.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_WARNING,
+                                             "Autopilot enabled".encode())
+            elif auto_btn < 1501 and autopilot is True:
                 autopilot = False
+                autopilot_enable_event.clear()
+                link_out.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_WARNING,
+                                             "Autopilot disabled".encode())
         else:
             print("mavlink autopilot timeout")
 
@@ -235,29 +253,45 @@ def main():
     stop_event = threading.Event()
     servo_data = ThreadSafeValue()
 
-    mavlink_thread = threading.Thread(target=mavlink_servo_input, args=(stop_event, servo_data))
-    #mavlink_thread.start()
+    mavlink_thread = threading.Thread(target=mavlink_servo_input,
+                                      args=(stop_event, servo_data),
+                                      name="mavlink_thread")
+    mavlink_thread.start()
 
-    GPIO_thread = threading.Thread(target=GPIO_interface, args=(stop_event, servo_data))
-    #GPIO_thread.start()
+    autopilot_enable_event = threading.Event()
+    GPIO_thread = threading.Thread(target=GPIO_interface,
+                                   args=(stop_event, servo_data, autopilot_enable_event,),
+                                   name="GPIO_thread")
+    GPIO_thread.start()
 
     IMU_data = ThreadSafeValue()
-    IMU_thread = threading.Thread(target=mavlink_IMU_input, args=(stop_event, IMU_data,))
+    IMU_thread = threading.Thread(target=mavlink_IMU_input,
+                                  args=(stop_event, IMU_data,),
+                                  name="IMU_thread")
     IMU_thread.start()
 
     thruster_data = ThreadSafeValue()
-    thruster_thread = threading.Thread(target=mavlink_thruster_control, args=(stop_event, thruster_data,))
-    #thruster_thread.start()
+    thruster_thread = threading.Thread(target=mavlink_thruster_control,
+                                       args=(stop_event, thruster_data, autopilot_enable_event,),
+                                       name="thruster_thread")
+    thruster_thread.start()
 
-    ping_thread = threading.Thread(target=ping_distance, args=(stop_event,))
+    ping_thread = threading.Thread(target=ping_distance,
+                                   args=(stop_event,),
+                                   name="ping_thread")
     #ping_thread.start()
 
     distance_data = ThreadSafeValue()
-    depth_thread = threading.Thread(target=mavlink_depth, args=(stop_event,distance_data,))
+    depth_thread = threading.Thread(target=mavlink_depth,
+                                    args=(stop_event, distance_data,),
+                                    name="depth_thread")
     depth_thread.start()
 
     pid_parameters = ThreadSafeValue()
-    user_thread = threading.Thread(target=user_input, args=(stop_event, pid_parameters, distance_data,))
+    object_detection_enabled_event = threading.Event()
+    user_thread = threading.Thread(target=user_input,
+                                   args=(stop_event, pid_parameters, distance_data, object_detection_enabled_event,),
+                                   name="user_thread")
     user_thread.start()
 
     prediction_data = ThreadSafeValue()
@@ -277,7 +311,7 @@ def main():
                                   name="autopilot_thread")
     controller.start()
 
-    auto_thread = threading.Thread(target=autopilot_handler, args=(stop_event,))
+    auto_thread = threading.Thread(target=autopilot_handler, args=(stop_event, autopilot_enable_event), name="auto_thread")
     auto_thread.start()
 
     try:

@@ -67,7 +67,6 @@ class Servo:
         """
         value = inn + self._offset  # add offset calibration to get correct center
         duty_cycle = Servo.map(self._min_in, self._max_in, self._min_out, self._max_out, value)
-        print("duty_cycle: ", duty_cycle)
         self._pwm.change_duty_cycle(duty_cycle)
 
     def write_smooth(self, inn, step_length=0.02, delay=0.005):
@@ -93,7 +92,6 @@ class Servo:
             else:
                 break
             self._pwm.change_duty_cycle(self._prev_duty_cycle)
-            print(self._prev_duty_cycle)
             sleep(delay)
 
     def __del__(self):
@@ -121,6 +119,6 @@ if __name__ == '__main__':
 
     while True:
         value = float(input("value:"))
-        camera.write(value)
-        #motor.write_smooth(value)
+        #camera.write(value)
+        motor.write_smooth(value)
         sleep(0.5)

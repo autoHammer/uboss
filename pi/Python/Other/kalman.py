@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import time
 from Other.pid import PID
@@ -44,7 +46,7 @@ def get_prediction_coordinates(detection_results, desired_object):
     return coordinates
 
 
-def controller_thread(stop_event, IMU_data, prediction_results, distance_data, pid_parameters, output):
+def controller_thread(stop_event, autopilot_enable_event, IMU_data, prediction_results, distance_data, pid_parameters, output):
     # Kalman parameters:
     initial_x = np.matrix([[0], [0], [0]])
     initial_p = np.matrix([[0, 0, 0],
@@ -61,6 +63,8 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
     kalman_filter_y = Kalman(x=initial_x, p=initial_p, H=H, R=R_y, process_variance=process_variance)
 
     # constants:
+    IMU_X_BIAS = 2.49
+    IMU_Y_BIAS = -12.559
     IMU = 2
     DETECTION_ALGORITHM = 1
     RECTANGULAR_CRAB_TRAP = "rectangular fish trap"
@@ -102,16 +106,21 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
         # Check for new pid parameters:
         if pid_parameters.has_new_value():
             params = pid_parameters.take()
-            controller_x.update_all_params(kp=params["x_kp"], ki=params["x_ki"], kd=params["x_kd"])
-            controller_y.update_all_params(kp=params["y_kp"], ki=params["y_ki"], kd=params["y_kd"])
-            controller_z.update_all_params(kp=params["z_kp"], ki=params["z_ki"], kd=params["z_kd"])
-            print("New parameters gotten: x_kp: ", controller_x.kp_, " x_ki: ", controller_x.ki_,  " x_kd: ", controller_x.kd_)
+            controller_x.update_all_params(kp=float(params["x_kp"]), ki=float(params["x_ki"]), kd=float(params["x_kd"]))
+            controller_y.update_all_params(kp=float(params["y_kp"]), ki=float(params["y_ki"]), kd=float(params["y_kd"]))
+            controller_z.update_all_params(kp=float(params["z_kp"]), ki=float(params["z_ki"]), kd=float(params["z_kd"]))
+            print("New parameters gotten: x_kp: ", controller_x.kp_, " x_ki: ", controller_x.ki_,  " x_kd: ",
+                  controller_x.kd_)
 
         # Update kalman
         kalman_filter_x.a_priori()
         kalman_filter_y.a_priori()
         if IMU_data.has_new_value():
             current_imu_data = IMU_data.take()
+            # Remove sensor bias:
+            current_imu_data["x"] -= IMU_X_BIAS
+            current_imu_data["y"] -= IMU_Y_BIAS
+
             # Update x coordinates
             kalman_filter_x.a_posteriori_asynchronous(measurement=[0, current_imu_data["x"]], sensor=IMU)
 
@@ -119,7 +128,8 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             kalman_filter_y.a_posteriori_asynchronous(measurement=[0, current_imu_data["y"]], sensor=IMU)
 
         if distance_data.has_new_value():
-            distance_dict = distance_data.take()
+            #distance_dict = distance_data.take() # TODO: REMEMBER TO CHANGE
+            distance_dict = {"distance": 102}
             if "distance" in distance_dict:
                 distance_measured = distance_dict["distance"]
 
@@ -129,12 +139,14 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             # Check for valid coordinates
             if coordinates["x"] is not None:
                 x_pos, y_pos = pixel_to_distance_calc(distance_measured, coordinates)
+                #print(threading.current_thread().name, "x coordinate: ", coordinates["x"], " y coordinate: ", coordinates["y"])
+                #print(threading.current_thread().name, "x pos: ", x_pos, " y pos: ", y_pos)
                 kalman_filter_x.a_posteriori_asynchronous(measurement=[x_pos, 0], sensor=DETECTION_ALGORITHM)
                 kalman_filter_y.a_posteriori_asynchronous(measurement=[y_pos, 0], sensor=DETECTION_ALGORITHM)
 
         # Controller output calculation with input from kalman filter
-        x_pos_estimate = kalman_filter_x.x[0]
-        y_pos_estimate = kalman_filter_y.x[0]
+        x_pos_estimate = - kalman_filter_x.x[0]  # Invert to get correct direction
+        y_pos_estimate = - kalman_filter_y.x[0]  # Invert to get correct direction
 
         x_output = controller_x.output(x_pos_estimate)
         y_output = controller_y.output(y_pos_estimate)
@@ -146,9 +158,12 @@ def controller_thread(stop_event, IMU_data, prediction_results, distance_data, p
             acceptable_xy_error = False
 
         # Get z output based on measured distance and xy_error:
-        z_output, actuator_mode = z_and_actuator_controller.output(distance_measured, acceptable_xy_error)
+        z_output, actuator_mode = z_and_actuator_controller.output(distance_measured, acceptable_xy_error,
+                                                                   autopilot_enabled=autopilot_enable_event)
 
         output_dict = {"x": x_output, "y": y_output, "z": z_output, "actuator": actuator_mode}
+        #print(threading.current_thread().name, ": Current thrust x:", output_dict["x"], " y: ", output_dict["y"], " z: ", output_dict["z"])
+        #print(threading.current_thread().name, ": Estimations: x:", kalman_filter_x.x[0], " y: ", kalman_filter_y.x[0])
 
         output.set(output_dict)
         # Sleep to give kalman calculation time
@@ -219,7 +234,10 @@ class HeightAndActuatorController:
         self.actuator_extension_timer = time.time()
         self.RISE_VALUE = 100  # the amount of cm that the ROV will rise after grabbing the trap
 
-    def output(self, distance, acceptable_xy_error):
+    def output(self, distance, acceptable_xy_error, autopilot_enabled):
+        if autopilot_enabled.is_set():
+            self.state = "idle"
+
         match self.state:
             case "idle":  # Wait for acceptable xy error and change to de_escalate mode
                 if acceptable_xy_error:

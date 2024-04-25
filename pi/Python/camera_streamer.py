@@ -22,14 +22,13 @@ YOLOV8_FIRST_BEST_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/v8_small_first_b
 YOLOV8_TRAPS_ONLY_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/traps_only_small.pt"
 YOLOV8_CUSTOM_TRAPS_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_small.pt"
 YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_nano.pt"
-#YOLOV8_CUSTOM_TRAPS_NANO_PT = "../Image_Recognition/yolov8/Weights/custom_traps_nano.pt"
 
 # Detector object
 #object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
 
 
 class VideoStreamer:
-    def __init__(self, stop_event, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
+    def __init__(self, stop_event, prediction_enable_event, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
         self.stop_event = stop_event
         # Capture pipeline
         if capture_pipeline == "camera_capture":
@@ -56,6 +55,7 @@ class VideoStreamer:
         self.appsrc = self.stream_pipeline.get_by_name('mysrc')
         self.recognition_results = predictions
         self.object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT, thread_safe_results=predictions)
+        self.prediction_enabled_event = prediction_enable_event
 
     def on_new_sample(self, appsink):
         sample = appsink.emit('pull-sample')
@@ -71,12 +71,9 @@ class VideoStreamer:
                 dtype=np.uint8)
 
             # Image processing:
-            self.object_detector.detect(frame)
-            frame = self.object_detector.draw_boxes(frame)
-
-            """if self.recognition_results.has_new_value():
-                print("LOLOLOL")
-                self.recognition_results.take()"""
+            if self.prediction_enabled_event.is_set():
+                self.object_detector.detect(frame)
+                frame = self.object_detector.draw_boxes(frame)
 
             self.push_frame_to_appsrc(frame)
 
@@ -119,32 +116,9 @@ class VideoStreamer:
                     self.stop_event.set()
                     break
             time.sleep(0.01)  # Sleep to reduce CPU usage
-
         self.stop()  # Stop the GStreamer pipelines
 
 
 
 
-#def start_stream():
-    #def start_stream(stop_event, predictions):
-"""    def start_stream(self):
-        # Video dir:
-        #VIDEO_DIR = os.getcwd() + "/../temp/second_dive_trap_detection.mkv"
-        #processor = VideoStreamer("camera_capture", predictions)
-        #processor = VideoProcessor("videofile_capture", video_file=VIDEO_DIR)
-        #processor.start()
-    
-        # Run the gstream loop
-        gstream = GLib.MainLoop()
-        try:
-            gstream.run()
-        except KeyboardInterrupt:
-            processor.stop()
-            gstream.quit()"""
 
-
-#start_stream()
-"""
-if __name__ == "__main__":
-    main()
-"""

@@ -96,7 +96,6 @@ def GPIO_interface(stop_event, servo_data):
 
     while not stop_event.is_set():
         if servo_data.has_new_value():
-
             new_data = servo_data.take()
             if 'motor' in new_data:
                 #motor.write(data["motor"].servo10_raw)
@@ -163,10 +162,11 @@ def mavlink_depth(stop_event, distance_data):
             print("mavlink depth reconnected")
 
 
-def user_input(stop_event, PID_data, distance_data):
+def user_input(stop_event, PID_data, distance_data, enable_object_detection_event):
     while not stop_event.is_set():
         print("1. Restart max_depth\n"
-              "2. Change PID parameters")
+              "2. Change PID parameters\n"
+              "3. Toggle object detection")
         command = input()
 
         if command == "1":
@@ -196,7 +196,15 @@ def user_input(stop_event, PID_data, distance_data):
                 print(f"Only give number input (INT) in the range 0 to {len(alternatives)}")
             except TypeError:
                 print("PID not initialized yet!")
-            print("data: ", PID_data.take())
+            print("data: ", PID)
+
+        elif command == "3":
+            if enable_object_detection_event.is_set():
+                enable_object_detection_event.clear()
+                print("Object detection: Offline")
+            else:
+                enable_object_detection_event.set()
+                print("Object detection: Online")
 
         else:
             print("invalid input")
@@ -210,7 +218,6 @@ def autopilot_handler(stop_event):
         message = link_in.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)
         if message:
             auto_btn = message.servo11_raw
-            print("message: ", auto_btn)
 
             if auto_btn > 1500:
                 autopilot = True
@@ -254,41 +261,36 @@ def main():
     user_thread.start()
 
     prediction_data = ThreadSafeValue()
-    video_streamer = VideoStreamer(stop_event, "camera_capture", predictions=prediction_data)
-    camera_streamer_thread = threading.Thread(target=video_streamer.video_streaming_thread, args=())
-    #camera_streamer_thread.start()  # TODO: add
+    object_detection_enabled_event.set()
+    video_streamer = VideoStreamer(stop_event, prediction_enable_event=object_detection_enabled_event,
+                                   capture_pipeline="camera_capture", predictions=prediction_data)
+    camera_streamer_thread = threading.Thread(target=video_streamer.video_streaming_thread, args=(),
+                                              name="camera_streaming_thread")
+    camera_streamer_thread.start()
 
     # Distance measurement should be inserted with desired units here (same units as IMU_data)
     #distance_data = 102  # 102cm distance sensor measurement
-    controller_output = ThreadSafeValue()
-    controller = threading.Thread(target=controller_thread, args=(stop_event, IMU_data,
+    controller = threading.Thread(target=controller_thread,
+                                  args=(stop_event, autopilot_enable_event, IMU_data,
                                                                   prediction_data, distance_data,
-                                                                  pid_parameters, controller_output,))
+                                                                  pid_parameters, thruster_data,),
+                                  name="autopilot_thread")
     controller.start()
 
     auto_thread = threading.Thread(target=autopilot_handler, args=(stop_event,))
     auto_thread.start()
 
-    sleep(10)  #TODO: remove
-    #print("after 10s", flush=True)
-    camera_streamer_thread.start()  # TODO: remove
     try:
         while True:
-            if IMU_data.has_new_value():
-                pass#print("IMU_data:", IMU_data.take())
-            if distance_data.has_new_value():
-                pass#print("distance_data:", distance_data.take())
-
             sleep(0.01)
 
     except KeyboardInterrupt:
         print("\nStopping program. . .")
-        video_streamer.stop()
         stop_event.set()
         mavlink_thread.join()
         GPIO_thread.join()
         IMU_thread.join()
-        ping_thread.join()
+        #ping_thread.join() TODO: is never started
         depth_thread.join()
         user_thread.join()
         camera_streamer_thread.join()

@@ -5,8 +5,7 @@ import cv2
 import time
 import datetime
 from Other.thread_safe_value import ThreadSafeValue
-import io
-from contextlib import redirect_stdout
+import os
 
 # Recognition font settings
 # Recognition font settings:
@@ -53,9 +52,7 @@ class ObjectDetector:
 
     def detector_thread(self, frame):
         start_t = time.time()
-        f = io.StringIO()
-        with redirect_stdout(f):
-            results = self._model.predict(frame, verbose=False)
+        results = self._model.predict(frame, verbose=False)
         self._last_processing_duration = time.time() - start_t
         self._results.set(results)
         # If results are desired, update thread safe results

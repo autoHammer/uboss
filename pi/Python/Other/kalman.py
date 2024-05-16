@@ -6,13 +6,13 @@ from Other.pid import PID
 
 def pixel_to_distance_calc(distance, coordinates):
     # Camera parameters:
-    tetha = 36  # width angle
+    theta = 36  # width angle
     alpha = 36  # height angle
     pixel_width = 640
     pixel_height = 480
 
-    frame_width = 2 * distance / np.sin(tetha/2)
-    frame_height = 2 * distance / np.sin(alpha/2)
+    frame_width = 2 * distance * np.tan(theta / 2)
+    frame_height = 2 * distance * np.tan(alpha/2)
 
     distance_per_pixel_x = frame_width / pixel_width
     distance_per_pixel_y = frame_height / pixel_height

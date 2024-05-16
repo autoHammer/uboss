@@ -3,7 +3,7 @@ import numpy as np
 from ultralytics import YOLO
 import cv2
 import time
-import datetime
+from datetime import datetime
 from Other.thread_safe_value import ThreadSafeValue
 import os
 
@@ -24,18 +24,23 @@ class ObjectDetector:
         self._thread_safe_results = thread_safe_results
         self._current_frame = None
         self._detector_thread = None
-        self._last_processing_duration = None
         self._STORE = store_process_duration
-        self._FILE = None
+        self._FILENAME = None
         # Start writing to file if storing is desired
 
         if self._STORE:
-            self._FILE = open(model)
+            SCRIPT_PATH = os.path.abspath(__file__)
+            SCRIPT_DIR = os.path.dirname(SCRIPT_PATH)
+            LOGGING_DIR = SCRIPT_DIR + "/logs/"
+            now = datetime.now()
+            timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+            model_name = model.split("/")
+            model_name = model_name[-1].split(".")
+            self._FILENAME = f"{LOGGING_DIR}{model_name[0]}_{timestamp}.txt"
 
-    def __del__(self):
-        print("Destroyed")
-        #if self._STORE and not self._FILE.closed():
-
+    def write_to_file(self, data):
+        with open(self._FILENAME, "a") as file:
+            file.write(str(data) + "\n")
 
     def detect(self, frame):
         # Update frame
@@ -53,11 +58,15 @@ class ObjectDetector:
     def detector_thread(self, frame):
         start_t = time.time()
         results = self._model.predict(frame, verbose=False)
-        self._last_processing_duration = time.time() - start_t
+        processing_duration = time.time() - start_t
         self._results.set(results)
         # If results are desired, update thread safe results
         if self._thread_safe_results is not None:
             self._thread_safe_results.set(results)
+        # If storing is on. Store time durations of process to file
+        if self._STORE:
+            self.write_to_file(processing_duration)
+
 
     def draw_boxes(self, frame):
         if (self._current_frame is None) or (self._results.take() is None):
@@ -80,7 +89,7 @@ class ObjectDetector:
                 # Calculate text size to position it correctly
                 text_size = cv2.getTextSize(detected_object, font, font_scale, font_thickness)[0]
                 text_x = x - w // 2
-                text_y = y - h // 2 - 10  # Position the text 10px above the rectangle
+                text_y = y - h // 2 + 20  # Position the inside the rectangle frame
 
                 # Ensure the text background rectangle does not go out of the image bounds
                 background_top_left = (text_x, text_y - text_size[1] - 2)

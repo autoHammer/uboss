@@ -8,7 +8,7 @@ from Hardware_Interface.ping_logger import ping_distance
 from Other.thread_safe_value import ThreadSafeValue
 from camera_streamer import *
 from Other.kalman import *
-gi.require_version('Gst', '1.0')
+
 
 
 def mavlink_thruster_control(stop_event, thruster_data, autopilot_enable_event):
@@ -304,12 +304,12 @@ def main():
 
     # Distance measurement should be inserted with desired units here (same units as IMU_data)
     #distance_data = 102  # 102cm distance sensor measurement
-    controller = threading.Thread(target=controller_thread,
+    autopilot_thread = threading.Thread(target=controller_thread,
                                   args=(stop_event, autopilot_enable_event, IMU_data,
                                                                   prediction_data, distance_data,
                                                                   pid_parameters, thruster_data,),
                                   name="autopilot_thread")
-    controller.start()
+    autopilot_thread.start()
 
     auto_thread = threading.Thread(target=autopilot_handler, args=(stop_event, autopilot_enable_event), name="auto_thread")
     auto_thread.start()
@@ -328,7 +328,7 @@ def main():
         depth_thread.join()
         user_thread.join()
         camera_streamer_thread.join()
-        controller.join()
+        autopilot_thread.join()
         auto_thread.join()
         print("Program closed successfully.")
 

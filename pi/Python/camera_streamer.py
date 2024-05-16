@@ -1,14 +1,15 @@
+import threading
+
 import gi
 import cv2
 import numpy as np
 from ultralytics import YOLO
+gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
 import os
 from object_recognizer import ObjectDetector
 from Other.thread_safe_value import ThreadSafeValue
 import time
-
-gi.require_version('Gst', '1.0')
 
 # Initialize GStreamer
 Gst.init(None)
@@ -23,12 +24,17 @@ YOLOV8_TRAPS_ONLY_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/traps_only
 YOLOV8_CUSTOM_TRAPS_SMALL_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_small.pt"
 YOLOV8_CUSTOM_TRAPS_NANO_PT = IMAGE_RECOGNITION_DIR + "/yolov8/Weights/custom_traps_nano.pt"
 
+CURRENT_ALGORITHM = YOLOV8_CUSTOM_TRAPS_NANO_PT  # Here the chosen algorithm is specified
+
+VIDEO_FILE_PATH = SCRIPT_DIR + "/../temp/third_dive.mkv"
+
 # Detector object
 #object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT)
 
 
 class VideoStreamer:
-    def __init__(self, stop_event, prediction_enable_event, capture_pipeline, video_file="", predictions=ThreadSafeValue()):
+    def __init__(self, stop_event, prediction_enable_event, capture_pipeline, video_file="",
+                 store_process_duration=False, predictions=ThreadSafeValue()):
         self.stop_event = stop_event
         # Capture pipeline
         if capture_pipeline == "camera_capture":
@@ -54,7 +60,9 @@ class VideoStreamer:
         )
         self.appsrc = self.stream_pipeline.get_by_name('mysrc')
         self.recognition_results = predictions
-        self.object_detector = ObjectDetector(YOLOV8_CUSTOM_TRAPS_NANO_PT, thread_safe_results=predictions)
+        self.object_detector = ObjectDetector(CURRENT_ALGORITHM,
+                                              store_process_duration=store_process_duration,
+                                              thread_safe_results=predictions)
         self.prediction_enabled_event = prediction_enable_event
 
     def on_new_sample(self, appsink):
@@ -116,9 +124,31 @@ class VideoStreamer:
                     self.stop_event.set()
                     break
             time.sleep(0.01)  # Sleep to reduce CPU usage
+
+        # Call object detector destructor and stop streaming pipelines
+        del self.object_detector
         self.stop()  # Stop the GStreamer pipelines
 
 
 
+if __name__ == "__main__":
+    print("Script starting")
+    camera_streaming = "camera_capture"
+    video_file_streaming = "videofile_capture"
+    stop_event = threading.Event()
+    prediction_enable_event = threading.Event()
+    prediction_enable_event.set()
+    store_process_duration = False  # Store the duration times of each image prediction
+    try:
+        video_streamer = VideoStreamer(stop_event=stop_event, prediction_enable_event=prediction_enable_event,
+                                       capture_pipeline=video_file_streaming,
+                                       store_process_duration=store_process_duration, video_file=VIDEO_FILE_PATH)
+        video_streamer.video_streaming_thread()
 
+    except KeyboardInterrupt:
+        stop_event.set()
+        print("Video stream stopped")
+        time.sleep(5)  # Wait for prediction to stop properly
 
+    finally:
+        print("Program stopped")

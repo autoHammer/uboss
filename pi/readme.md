@@ -7,6 +7,8 @@ This github project serves as the software development and documentation for the
 ghost fishing. This project attempts to explore the possibility of utilizing ROVs to mark crab traps for further pickup,
 and the possibility of performing this marking solution autonomously. 
 
+![The final product](images/rovOnExtenderModule.png)
+
 The project utilizes a BlueROV2 heavy which is made for modular customization. The group has made a custom extension
 module to the BlueROV2 heavy consisting of a custom electronics tube, fitted with the following equipment:
 
@@ -37,9 +39,13 @@ The project utilizes PyMavlink to communicate to both the ROV and surface comput
 to note that any attempt of building this project, requires the Raspberry Pi 5's ethernet Ip to be set to static with the
 ip: "192.168.2.3" using the network manager and NOT dhcpcd which is the old standard. It is also important to manually 
 add custom endpoints to the BlueROV2 heavy BlueOS which can be done following the [guide by BlueRobotics](https://blueos.cloud/docs/blueos/1.0/advanced-usage/).
-Then the following endpoints need to be created:
+In the below images an overview of the added as well as original endpoints are shown. For the added endpoints the owner 
+has to be set top "ardupilot-manager". The type also needs to be configured as "UDP Client".
 
-# ADD ENDPOINTS HERE
+
+![BlueOS endpoints 1](images/endpointsBlueOS_1.png)
+![BlueOS endpoints 2](images/endpointsBlueOS_2.png)
+
 
 
 ## File structure

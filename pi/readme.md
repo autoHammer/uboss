@@ -1,38 +1,11 @@
-# Uboss bachelor project 2024
-Code by: William Hammer & Sigbjørn N. Kleppe
-
-## Introduction
-This github project serves as the software development and documentation for the interdisciplinary bachelor thesis 
-"Uboss" at NTNU Ålesund the Spring of 2024. The motivation for the thesis is the development of technology relating to the problem of
-ghost fishing. This project attempts to explore the possibility of utilizing ROVs to mark crab traps for further pickup,
-and the possibility of performing this marking solution autonomously. 
-
-![The final product](images/rovOnExtenderModule.png)
-
-The project utilizes a BlueROV2 heavy which is made for modular customization. The group has made a custom extension
-module to the BlueROV2 heavy consisting of a custom electronics tube, fitted with the following equipment:
-
-* **Raspberry Pi 5:** Responsible for the on-board logic. Communicates between the surface computer and the ROV, as well as
-    it controls the custom on board equipment. The Raspberry is supposed to run the main.py script when the
-    vehicle is in operation. 
-
-* **h264 USB camera:** Used for the camera stream to the ground control station on the surface computer.
-
-* **Servo:** Moves the camara mount such that a greater field of view is possible.
-
-* **BlueRobotics basic ESC:** Controls the BlueRobotics T200 thruster attached to the linear actuator with the use of PWM.
-
-* **BlueRobotics T200 Thruster:** Attaches to the linear actuator to attract and re-tract the crab trap attachment hook.
-
-* **Serial to RS485 adapter:** Converts RS485 signal from the ping sonar to serial communication to the Raspberry Pi.
-
-* **Ping sonar:** Sonar distance sensor to measure the distance from the seabed.
-
-* **Subsea light:** Lighting to help see below the surface. 
-
+## Setup
 
 All of the code is written exclusively in Python. Thus all required Python libraries are contained neatly in the included
-requirements.txt file. 
+requirements.txt file. This file should contain all pip libraries used during the project.
+It is advised to utilize a fresh Python 3.11 Virtual environment on your Raspberry before installing 
+the libraries. Once the libraries are properly installed, the main.py file can be run from within the virtual environment.
+This initiates the program, and the Raspberry Pi will start communicating with the BlueROV as well as QGroundControl if 
+these are properly connected and powered.
 
 
 The project utilizes PyMavlink to communicate to both the ROV and surface computer over ethernet/IP. Thus it is important

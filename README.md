@@ -1,5 +1,10 @@
 # Uboss bachelor project 2024
-Code by: William Hammer & Sigbjørn N. Kleppe
+Code by: William Hammer & Sigbjørn N. Kleppe  
+
+### All files can be found on NTNU open website:  
+["Toward Cleaner Oceans: Developing an ROV-Based Solution for Subsea Fishing Trash Collection"](https://link_not_available_yet_search_title_on_google)
+
+
 
 ## Introduction
 This github project serves as the software development and documentation for the interdisciplinary bachelor thesis

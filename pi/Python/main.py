@@ -10,7 +10,6 @@ from camera_streamer import *
 from Other.kalman import *
 
 
-
 def mavlink_thruster_control(stop_event, thruster_data, autopilot_enable_event):
     link_out = mavutil.mavlink_connection('udpin:192.168.2.3:14550')
     link_out.wait_heartbeat()
@@ -69,7 +68,7 @@ def mavlink_servo_input(stop_event, servo_data):
     )
 
     while not stop_event.is_set():
-        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)  # TODO: add timeout
+        message = link.recv_match(type='SERVO_OUTPUT_RAW', blocking=True, timeout=2)
         if message:
             servo_data.set({"camera_tilt": message.servo9_raw,
                             "motor": message.servo10_raw})
@@ -77,7 +76,7 @@ def mavlink_servo_input(stop_event, servo_data):
             print("Mavlink servo timout")
 
 
-def GPIO_interface(stop_event, servo_data, x):
+def GPIO_interface(stop_event, servo_data):
     """
     Code for interfacing hardware connected to GPIO
     Args:
@@ -86,6 +85,8 @@ def GPIO_interface(stop_event, servo_data, x):
             - "motor":value
             - "camera_tilt":value
     """
+    # TODO: Only move motor when Ardusub is armed.
+
     ''' Motor setup '''
     motor = Servo(18)
     motor._min_in = 1100  # control motor with -100 to 100 (percentage thrust)
@@ -117,7 +118,7 @@ def GPIO_interface(stop_event, servo_data, x):
 
 def calculate_depth(pressure_abs):
     """
-    Calculate depth based on absoulute pressure
+    Calculate depth based on absolute pressure
     Args:
         pressure_abs: pressure in hPa (hecto Pascal)
 
@@ -222,7 +223,6 @@ def autopilot_handler(stop_event, autopilot_enable_event):
     link_in.wait_heartbeat()
 
     link_out = mavutil.mavlink_connection('udpout:192.168.2.1:14550', source_system=1)
-    # TODO: add send heartbeat? to not get the heartbeat lost stuff
 
     autopilot = False
 
@@ -260,7 +260,7 @@ def main():
 
     autopilot_enable_event = threading.Event()
     GPIO_thread = threading.Thread(target=GPIO_interface,
-                                   args=(stop_event, servo_data, autopilot_enable_event,),
+                                   args=(stop_event, servo_data,),
                                    name="GPIO_thread")
     GPIO_thread.start()
 
@@ -303,7 +303,6 @@ def main():
     camera_streamer_thread.start()
 
     # Distance measurement should be inserted with desired units here (same units as IMU_data)
-    #distance_data = 102  # 102cm distance sensor measurement
     autopilot_thread = threading.Thread(target=controller_thread,
                                   args=(stop_event, autopilot_enable_event, IMU_data,
                                                                   prediction_data, distance_data,

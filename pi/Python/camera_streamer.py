@@ -130,7 +130,6 @@ class VideoStreamer:
         self.stop()  # Stop the GStreamer pipelines
 
 
-
 if __name__ == "__main__":
     print("Script starting")
     camera_streaming = "camera_capture"

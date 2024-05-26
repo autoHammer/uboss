@@ -128,8 +128,7 @@ def controller_thread(stop_event, autopilot_enable_event, IMU_data, prediction_r
             kalman_filter_y.a_posteriori_asynchronous(measurement=[0, current_imu_data["y"]], sensor=IMU)
 
         if distance_data.has_new_value():
-            #distance_dict = distance_data.take() # TODO: REMEMBER TO CHANGE
-            distance_dict = {"distance": 102}
+            distance_dict = distance_data.take()
             if "distance" in distance_dict:
                 distance_measured = distance_dict["distance"]
 

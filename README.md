@@ -2,7 +2,7 @@
 Code by: William Hammer & Sigbjørn N. Kleppe  
 
 ### All files can be found on NTNU open website:  
-["Toward Cleaner Oceans: Developing an ROV-Based Solution for Subsea Fishing Trash Collection"]([https://link_not_available_yet_search_title_on_google](https://hdl.handle.net/11250/3139938))
+["Toward Cleaner Oceans: Developing an ROV-Based Solution for Subsea Fishing Trash Collection"](https://hdl.handle.net/11250/3139938)
 
 
 
